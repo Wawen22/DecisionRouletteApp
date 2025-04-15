@@ -44,15 +44,43 @@ export default function NewWheel() {
       try {
         setLoadingGroups(true);
 
-        // Ottieni i gruppi di cui l'utente è membro
-        const { data, error } = await supabase
+        // Ottieni i gruppi di cui l'utente è proprietario
+        const { data: ownedGroups, error: ownedError } = await supabase
           .from('groups')
           .select('*')
-          .or(`owner_id.eq.${user.id},id.in.(SELECT group_id FROM group_members WHERE user_id = '${user.id}')`);
+          .eq('owner_id', user.id);
 
-        if (error) throw error;
+        if (ownedError) throw ownedError;
 
-        setGroups(data || []);
+        // Ottieni i gruppi di cui l'utente è membro
+        const { data: memberGroups, error: memberError } = await supabase
+          .from('group_members')
+          .select('group_id')
+          .eq('user_id', user.id);
+
+        if (memberError) throw memberError;
+
+        // Se l'utente è membro di qualche gruppo, recupera i dettagli di quei gruppi
+        let memberGroupsDetails = [];
+        if (memberGroups && memberGroups.length > 0) {
+          const groupIds = memberGroups.map(m => m.group_id);
+          const { data: groupsData, error: groupsError } = await supabase
+            .from('groups')
+            .select('*')
+            .in('id', groupIds);
+
+          if (groupsError) throw groupsError;
+          memberGroupsDetails = groupsData || [];
+        }
+
+        // Combina i gruppi di cui l'utente è proprietario e quelli di cui è membro
+        // Rimuovi eventuali duplicati (nel caso l'utente sia sia proprietario che membro)
+        const allGroups = [...(ownedGroups || []), ...memberGroupsDetails];
+        const uniqueGroups = allGroups.filter((group, index, self) =>
+          index === self.findIndex((g) => g.id === group.id)
+        );
+
+        setGroups(uniqueGroups);
       } catch (err) {
         console.error('Errore nel recupero dei gruppi:', err);
       } finally {
