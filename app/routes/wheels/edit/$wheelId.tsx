@@ -121,7 +121,14 @@ export default function EditWheel() {
 
         if (optionsError) throw optionsError;
 
-        setOptions(optionsData || []);
+        // Mantieni gli ID delle opzioni esistenti
+        setOptions((optionsData || []).map(opt => ({
+          id: opt.id,
+          text: opt.text,
+          color: opt.color || '',
+          penalty: opt.penalty || '',
+          bonus: opt.bonus || ''
+        })));
       } catch (err: any) {
         console.error('Errore nel recupero dei dati della ruota:', err);
         setError(err.message || 'Impossibile caricare i dati della ruota. Riprova più tardi.');
@@ -189,29 +196,102 @@ export default function EditWheel() {
 
       if (wheelError) throw wheelError;
 
-      // Gestisci le opzioni
-      // 1. Elimina le opzioni esistenti
-      const { error: deleteError } = await supabase
+      // Gestisci le opzioni in modo più sicuro per evitare conflitti con i giri esistenti
+      // 1. Ottieni le opzioni esistenti con i loro ID
+      const { data: existingOptions, error: fetchError } = await supabase
         .from('wheel_options')
-        .delete()
+        .select('id')
         .eq('wheel_id', wheelId);
 
-      if (deleteError) throw deleteError;
+      if (fetchError) throw fetchError;
 
-      // 2. Inserisci le nuove opzioni
-      const wheelOptions = validOptions.map(opt => ({
-        wheel_id: wheelId,
-        text: opt.text,
-        color: opt.color || null,
-        penalty: opt.penalty || null,
-        bonus: opt.bonus || null,
-      }));
+      // 2. Ottieni le opzioni che sono referenziate nella tabella spins
+      const { data: referencedOptions, error: referencedError } = await supabase
+        .from('spins')
+        .select('result_option_id')
+        .eq('wheel_id', wheelId);
 
-      const { error: optionsError } = await supabase
-        .from('wheel_options')
-        .insert(wheelOptions);
+      if (referencedError) throw referencedError;
 
-      if (optionsError) throw optionsError;
+      // Crea un set di ID di opzioni referenziate
+      const referencedIds = new Set(
+        (referencedOptions || []).map(spin => spin.result_option_id)
+      );
+
+      // Crea un map di opzioni esistenti per ID
+      const existingOptionsMap = new Map(
+        (existingOptions || []).map(opt => [opt.id, opt])
+      );
+
+      // Prepara le operazioni per ogni opzione
+      const optionsToUpdate = [];
+      const optionsToInsert = [];
+
+      // Processa le opzioni valide
+      for (const opt of validOptions) {
+        const optionData = {
+          wheel_id: wheelId,
+          text: opt.text,
+          color: opt.color || null,
+          penalty: opt.penalty || null,
+          bonus: opt.bonus || null,
+        };
+
+        if (opt.id) {
+          // È un'opzione esistente, aggiornala
+          optionsToUpdate.push({
+            id: opt.id,
+            ...optionData
+          });
+        } else {
+          // È una nuova opzione, inseriscila
+          optionsToInsert.push(optionData);
+        }
+      }
+
+      // Ottieni gli ID delle opzioni che devono essere mantenute
+      const keepOptionIds = new Set(optionsToUpdate.map(opt => opt.id));
+
+      // Identifica le opzioni da eliminare (quelle che non sono più presenti e non sono referenziate)
+      const optionsToDeleteIds = Array.from(existingOptionsMap.keys())
+        .filter(id => !keepOptionIds.has(id) && !referencedIds.has(id));
+
+      // 3. Esegui le operazioni di aggiornamento
+      // 3.1 Aggiorna le opzioni esistenti
+      if (optionsToUpdate.length > 0) {
+        for (const opt of optionsToUpdate) {
+          const { error: updateError } = await supabase
+            .from('wheel_options')
+            .update({
+              text: opt.text,
+              color: opt.color,
+              penalty: opt.penalty,
+              bonus: opt.bonus
+            })
+            .eq('id', opt.id);
+
+          if (updateError) throw updateError;
+        }
+      }
+
+      // 3.2 Elimina le opzioni non più necessarie (e non referenziate)
+      if (optionsToDeleteIds.length > 0) {
+        const { error: deleteError } = await supabase
+          .from('wheel_options')
+          .delete()
+          .in('id', optionsToDeleteIds);
+
+        if (deleteError) throw deleteError;
+      }
+
+      // 3.3 Inserisci le nuove opzioni
+      if (optionsToInsert.length > 0) {
+        const { error: insertError } = await supabase
+          .from('wheel_options')
+          .insert(optionsToInsert);
+
+        if (insertError) throw insertError;
+      }
 
       // Reindirizza alla pagina della ruota
       navigate(`/wheels/${wheelId}`);

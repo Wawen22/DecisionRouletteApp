@@ -1,4 +1,4 @@
-import { createContext, useContext } from 'react';
+import * as React from 'react';
 import type { ReactNode } from '../types/global';
 import { useAuth } from '../hooks/useAuth';
 import type { User, Session } from '@supabase/supabase-js';
@@ -14,7 +14,7 @@ interface AuthContextType {
   updatePassword: (password: string) => Promise<any>;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const AuthContext = React.createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const auth = useAuth();
@@ -27,7 +27,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 }
 
 export function useAuthContext() {
-  const context = useContext(AuthContext);
+  const context = React.useContext(AuthContext);
   if (context === undefined) {
     throw new Error('useAuthContext deve essere usato all\'interno di un AuthProvider');
   }
