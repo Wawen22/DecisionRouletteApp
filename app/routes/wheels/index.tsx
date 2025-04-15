@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 // Link component is not used, using <a> tags instead
+import { Link } from 'react-router-dom';
 import { supabase } from '../../utils/supabase';
 import { useAuthContext } from '../../components/AuthProvider';
 import WheelCard from '../../components/WheelCard';
@@ -27,12 +28,29 @@ export default function WheelsList() {
       try {
         setLoading(true);
 
-        // Ottieni le ruote personali dell'utente e quelle condivise con i suoi gruppi
-        const { data, error } = await supabase
+        // 1. Recupera tutti i group_id dei gruppi a cui l'utente appartiene
+        const { data: groupMembers, error: groupError } = await supabase
+          .from('group_members')
+          .select('group_id')
+          .eq('user_id', user.id);
+
+        if (groupError) throw groupError;
+
+        const groupIds = (groupMembers || []).map((gm: { group_id: string }) => gm.group_id);
+
+        // 2. Recupera tutte le wheels dove owner_id = user.id oppure group_id in [groupIds]
+        let query = supabase
           .from('wheels')
           .select('*, groups(name)')
-          .or(`owner_id.eq.${user.id},group_id.in.(SELECT group_id FROM group_members WHERE user_id = '${user.id}')`)
           .order('created_at', { ascending: false });
+
+        if (groupIds.length > 0) {
+          query = query.or(`owner_id.eq.${user.id},group_id.in.(${groupIds.join(',')})`);
+        } else {
+          query = query.eq('owner_id', user.id);
+        }
+
+        const { data, error } = await query;
 
         if (error) throw error;
 
