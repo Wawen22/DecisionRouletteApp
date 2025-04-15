@@ -27,11 +27,11 @@ export default function WheelsList() {
       try {
         setLoading(true);
 
-        // Ottieni le ruote personali dell'utente
+        // Ottieni le ruote personali dell'utente e quelle condivise con i suoi gruppi
         const { data, error } = await supabase
           .from('wheels')
-          .select('*')
-          .eq('owner_id', user.id)
+          .select('*, groups(name)')
+          .or(`owner_id.eq.${user.id},group_id.in.(SELECT group_id FROM group_members WHERE user_id = '${user.id}')`)
           .order('created_at', { ascending: false });
 
         if (error) throw error;

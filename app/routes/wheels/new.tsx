@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { supabase } from '../../utils/supabase';
 import { useAuthContext } from '../../components/AuthProvider';
 import Layout from '../../components/Layout';
 import type { FormEvent } from '../../types/global';
 import type { Route } from './+types/new';
+import type { Group } from '../../utils/supabase';
 
 export function meta({}: Route.MetaArgs) {
   return [
@@ -27,10 +28,40 @@ export default function NewWheel() {
     { text: '' },
   ]);
   // Rimosso il campo type poiché non è più presente nel nuovo schema
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  const [groups, setGroups] = useState<Group[]>([]);
+  const [loadingGroups, setLoadingGroups] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { user } = useAuthContext();
   const navigate = useNavigate();
+
+  // Carica i gruppi dell'utente
+  useEffect(() => {
+    if (!user) return;
+
+    const fetchGroups = async () => {
+      try {
+        setLoadingGroups(true);
+
+        // Ottieni i gruppi di cui l'utente è membro
+        const { data, error } = await supabase
+          .from('groups')
+          .select('*')
+          .or(`owner_id.eq.${user.id},id.in.(SELECT group_id FROM group_members WHERE user_id = '${user.id}')`);
+
+        if (error) throw error;
+
+        setGroups(data || []);
+      } catch (err) {
+        console.error('Errore nel recupero dei gruppi:', err);
+      } finally {
+        setLoadingGroups(false);
+      }
+    };
+
+    fetchGroups();
+  }, [user]);
 
   const handleOptionChange = (index: number, field: keyof WheelOption, value: string) => {
     const newOptions = [...options];
@@ -92,7 +123,8 @@ export default function NewWheel() {
         .insert([
           {
             title,
-            owner_id: session.user.id
+            owner_id: session.user.id,
+            group_id: selectedGroupId || null
           }
         ])
         .select()
@@ -173,7 +205,33 @@ export default function NewWheel() {
             />
           </div>
 
-          {/* Rimosso il selettore del tipo di ruota poiché non è più presente nel nuovo schema */}
+          <div className="mb-6">
+            <label htmlFor="group" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Condividi con un gruppo (opzionale)
+            </label>
+            <select
+              id="group"
+              value={selectedGroupId || ''}
+              onChange={(e) => setSelectedGroupId(e.target.value || null)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+            >
+              <option value="">Nessun gruppo (privata)</option>
+              {loadingGroups ? (
+                <option disabled>Caricamento gruppi...</option>
+              ) : groups.length === 0 ? (
+                <option disabled>Nessun gruppo disponibile</option>
+              ) : (
+                groups.map(group => (
+                  <option key={group.id} value={group.id}>
+                    {group.name}
+                  </option>
+                ))
+              )}
+            </select>
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              Se selezioni un gruppo, tutti i membri potranno vedere e utilizzare questa ruota.
+            </p>
+          </div>
 
           <div className="mb-6">
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">

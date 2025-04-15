@@ -1,9 +1,10 @@
 // Link component is not used, using <a> tags instead
 import type { MouseEvent } from '../types/global';
 import type { Wheel } from '../utils/supabase';
+import type { Group } from '../utils/supabase';
 
 interface WheelCardProps {
-  wheel: Wheel;
+  wheel: Wheel & { groups?: { name: string } | null };
   onDelete?: (id: string) => void;
 }
 
@@ -26,9 +27,15 @@ export default function WheelCard({ wheel, onDelete }: WheelCardProps) {
           <h3 className="text-lg font-bold mb-2 text-gray-900 dark:text-white">
             {wheel.title}
           </h3>
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
-            Personale
-          </span>
+          {wheel.group_id ? (
+            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+              Gruppo: {wheel.groups?.name || 'Sconosciuto'}
+            </span>
+          ) : (
+            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+              Personale
+            </span>
+          )}
         </div>
 
         <div className="mt-4 flex justify-between items-center">

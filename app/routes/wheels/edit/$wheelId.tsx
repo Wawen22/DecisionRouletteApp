@@ -4,7 +4,7 @@ import { supabase } from '../../../utils/supabase';
 import { useAuthContext } from '../../../components/AuthProvider';
 import Layout from '../../../components/Layout';
 import type { FormEvent } from '../../../types/global';
-import type { Wheel, WheelOption } from '../../../utils/supabase';
+import type { Wheel, WheelOption, Group } from '../../../utils/supabase';
 
 export function meta() {
   return [
@@ -25,43 +25,74 @@ export default function EditWheel() {
   const { wheelId } = useParams();
   const [title, setTitle] = useState('');
   const [options, setOptions] = useState<WheelOptionForm[]>([]);
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  const [groups, setGroups] = useState<Group[]>([]);
+  const [loadingGroups, setLoadingGroups] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { user } = useAuthContext();
   const navigate = useNavigate();
 
+  // Carica i gruppi dell'utente
+  useEffect(() => {
+    if (!user) return;
+
+    const fetchGroups = async () => {
+      try {
+        setLoadingGroups(true);
+
+        // Ottieni i gruppi di cui l'utente è membro
+        const { data, error } = await supabase
+          .from('groups')
+          .select('*')
+          .or(`owner_id.eq.${user.id},id.in.(SELECT group_id FROM group_members WHERE user_id = '${user.id}')`);
+
+        if (error) throw error;
+
+        setGroups(data || []);
+      } catch (err) {
+        console.error('Errore nel recupero dei gruppi:', err);
+      } finally {
+        setLoadingGroups(false);
+      }
+    };
+
+    fetchGroups();
+  }, [user]);
+
   useEffect(() => {
     if (!wheelId || !user) return;
-    
+
     const fetchWheelData = async () => {
       try {
         setLoading(true);
-        
+
         // Ottieni i dettagli della ruota
         const { data: wheelData, error: wheelError } = await supabase
           .from('wheels')
           .select('*')
           .eq('id', wheelId)
           .single();
-          
+
         if (wheelError) throw wheelError;
-        
+
         // Verifica che l'utente abbia accesso a questa ruota
         if (wheelData.owner_id !== user.id) {
           throw new Error('Non hai accesso a questa ruota');
         }
-        
+
         setTitle(wheelData.title);
-        
+        setSelectedGroupId(wheelData.group_id || null);
+
         // Ottieni le opzioni della ruota
         const { data: optionsData, error: optionsError } = await supabase
           .from('wheel_options')
           .select('*')
           .eq('wheel_id', wheelId);
-          
+
         if (optionsError) throw optionsError;
-        
+
         setOptions(optionsData || []);
       } catch (err: any) {
         console.error('Errore nel recupero dei dati della ruota:', err);
@@ -70,7 +101,7 @@ export default function EditWheel() {
         setLoading(false);
       }
     };
-    
+
     fetchWheelData();
   }, [wheelId, user]);
 
@@ -122,7 +153,10 @@ export default function EditWheel() {
       // Aggiorna la ruota
       const { error: wheelError } = await supabase
         .from('wheels')
-        .update({ title })
+        .update({
+          title,
+          group_id: selectedGroupId || null
+        })
         .eq('id', wheelId);
 
       if (wheelError) throw wheelError;
@@ -155,7 +189,7 @@ export default function EditWheel() {
       navigate(`/wheels/${wheelId}`);
     } catch (err: any) {
       console.error('Errore nella modifica della ruota:', err);
-      
+
       if (err.message) {
         setError(`Errore: ${err.message}`);
       } else if (err.details) {
@@ -228,6 +262,34 @@ export default function EditWheel() {
               placeholder="Es. Dove andiamo a cena?"
               required
             />
+          </div>
+
+          <div className="mb-6">
+            <label htmlFor="group" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Condividi con un gruppo (opzionale)
+            </label>
+            <select
+              id="group"
+              value={selectedGroupId || ''}
+              onChange={(e) => setSelectedGroupId(e.target.value || null)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+            >
+              <option value="">Nessun gruppo (privata)</option>
+              {loadingGroups ? (
+                <option disabled>Caricamento gruppi...</option>
+              ) : groups.length === 0 ? (
+                <option disabled>Nessun gruppo disponibile</option>
+              ) : (
+                groups.map(group => (
+                  <option key={group.id} value={group.id}>
+                    {group.name}
+                  </option>
+                ))
+              )}
+            </select>
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              Se selezioni un gruppo, tutti i membri potranno vedere e utilizzare questa ruota.
+            </p>
           </div>
 
           <div className="mb-6">

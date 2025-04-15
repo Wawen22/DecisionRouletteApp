@@ -11,4 +11,5 @@ export default [
   route("wheels/edit/:wheelId", "routes/wheels/edit/$wheelId.tsx"),
   route("profile", "routes/profile/index.tsx"),
   route("groups", "routes/groups/index.tsx"),
+  route("groups/:groupId", "routes/groups/$groupId.tsx"),
 ] satisfies RouteConfig;
